@@ -46,7 +46,7 @@ int main(int argc, char** argv)
     }
     
     FILE *init_costs;
-    fp = fopen("example_topology", "r");
+    init_costs = fopen("example_topology", "r");
     char* first_info[100];
     fgets(first_info, 100, fp);
     //TODO: read and parse initial costs file. default to cost 1 if no entry for a node. file may be empty.
