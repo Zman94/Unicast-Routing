@@ -45,7 +45,7 @@ int main(int argc, char** argv)
         inet_pton(AF_INET, tempaddr, &globalNodeAddrs[i].sin_addr);
     }
     
-    FILE *fp;
+    FILE *init_costs;
     fp = fopen("example_topology", "r");
     char* first_info[100];
     fgets(first_info, 100, fp);
