@@ -1,10 +1,10 @@
 all: vec ls
 
-vec: main.c monitor_neighbors.h
-	gcc -pthread -o vec_router main.c monitor_neighbors.h
+vec: main.cpp monitor_neighbors.h
+	g++ -pthread -std=c++98 -o vec_router main.cpp monitor_neighbors.h
 
-ls: main.c monitor_neighbors.h
-	gcc -pthread -o ls_router main.c monitor_neighbors.h
+ls: main.cpp monitor_neighbors.h
+	g++ -pthread -std=c++98 -o ls_router main.cpp monitor_neighbors.h
 
 .PHONY: clean
 clean:
