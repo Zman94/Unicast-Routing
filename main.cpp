@@ -69,6 +69,7 @@ int main(int argc, char** argv)
         sscanf(line_info, "%d %d", &node, &cost);
         D[node] = cost;
     }
+    D[globalMyID] = 0;
     
     //socket() and bind() our socket. We will do all sendto()ing and recvfrom()ing on this one.
     if((globalSocketUDP=socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -85,6 +86,7 @@ int main(int argc, char** argv)
     bindAddr.sin_port = htons(7777);
     inet_pton(AF_INET, myAddr, &bindAddr.sin_addr);
     std::cout << "globalMyID " << globalMyID << "\n";
+    std::cout << "myAddr " << myAddr << "\n";
     if(bind(globalSocketUDP, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in)) < 0)
     {
         perror("bind");
@@ -101,7 +103,7 @@ int main(int argc, char** argv)
     
     
     //good luck, have fun!
-    listenForNeighbors(D, P);
+    listenForNeighbors(argv[3], D, P);
     
     
     

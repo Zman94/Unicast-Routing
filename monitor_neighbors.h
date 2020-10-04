@@ -48,8 +48,10 @@ void* announceToNeighbors(void* unusedParam)
     }
 }
 
-void listenForNeighbors(list<int>& D, list<string>& P)
+void listenForNeighbors(char* logFile, int D[], std::string P[])
 {
+    FILE* theLogFile;
+    theLogFile = fopen(logFile, "wb");
     char fromAddr[100];
     struct sockaddr_in theirAddr;
     socklen_t theirAddrLen;
@@ -75,6 +77,12 @@ void listenForNeighbors(list<int>& D, list<string>& P)
                     strchr(strchr(strchr(fromAddr,'.')+1,'.')+1,'.')+1);
             
             //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
+            char logLine[100];
+            // sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+            // sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+            // sprintf(logLine, "receive packet message %s\n", message); 
+            // sprintf(logLine, "unreachable dest %d\n", dest); 
+            // fwrite(logLine, 1, strlen(logLine), theLogFile);
             
             //record that we heard from heardFrom just now.
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
