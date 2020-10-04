@@ -48,7 +48,7 @@ void* announceToNeighbors(void* unusedParam)
     }
 }
 
-void listenForNeighbors()
+void listenForNeighbors(list<int>& D, list<string>& P)
 {
     char fromAddr[100];
     struct sockaddr_in theirAddr;
