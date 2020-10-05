@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <vector>
 
 #include "monitor_neighbors.h"
 
@@ -22,6 +23,14 @@ struct sockaddr_in globalNodeAddrs[256];
  
 int main(int argc, char** argv)
 {
+    //Distance vector
+    int D[256];
+    //Path vector
+    std::string P[256];
+    for(int i=0; i<256; i++){
+        D[i] = 1;
+        P[i] = "";
+    }
     if(argc != 4)
     {
         fprintf(stderr, "Usage: %s mynodeid initialcostsfile logfile\n\n", argv[0]);
@@ -46,11 +55,21 @@ int main(int argc, char** argv)
     }
     
     FILE *init_costs;
-    init_costs = fopen("example_topology", "r");
-    char* first_info[100];
-    fgets(first_info, 100, fp);
-    //TODO: read and parse initial costs file. default to cost 1 if no entry for a node. file may be empty.
-    
+    std::string file_path = "example_topology/";
+    file_path = file_path + argv[2];
+    init_costs = fopen(file_path.c_str(), "r");
+    if(init_costs == NULL) {
+        perror("Error opening file");
+        return(-1);
+    }
+    char line_info[100];
+    int node;
+    int cost;
+    while(fgets(line_info, 100, init_costs)){
+        sscanf(line_info, "%d %d", &node, &cost);
+        D[node] = cost;
+    }
+    D[globalMyID] = 0;
     
     //socket() and bind() our socket. We will do all sendto()ing and recvfrom()ing on this one.
     if((globalSocketUDP=socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -58,6 +77,7 @@ int main(int argc, char** argv)
         perror("socket");
         exit(1);
     }
+    std::cout << "socket bound\n";
     char myAddr[100];
     struct sockaddr_in bindAddr;
     sprintf(myAddr, "10.1.1.%d", globalMyID);	
@@ -65,6 +85,8 @@ int main(int argc, char** argv)
     bindAddr.sin_family = AF_INET;
     bindAddr.sin_port = htons(7777);
     inet_pton(AF_INET, myAddr, &bindAddr.sin_addr);
+    std::cout << "globalMyID " << globalMyID << "\n";
+    std::cout << "myAddr " << myAddr << "\n";
     if(bind(globalSocketUDP, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in)) < 0)
     {
         perror("bind");
@@ -81,7 +103,7 @@ int main(int argc, char** argv)
     
     
     //good luck, have fun!
-    listenForNeighbors();
+    listenForNeighbors(argv[3], D, P);
     
     
     
