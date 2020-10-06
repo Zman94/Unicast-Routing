@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     //Path vector
     std::string P[256];
     for(int i=0; i<256; i++){
-        D[i] = 1;
+        D[i] = -1;
         P[i] = "";
     }
     if(argc != 4)
@@ -55,8 +55,7 @@ int main(int argc, char** argv)
     }
     
     FILE *init_costs;
-    std::string file_path = "example_topology/";
-    file_path = file_path + argv[2];
+    std::string file_path = argv[2];
     init_costs = fopen(file_path.c_str(), "r");
     if(init_costs == NULL) {
         perror("Error opening file");

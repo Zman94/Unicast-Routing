@@ -57,3 +57,4 @@ dkms.conf
 
 vec_router
 ls_router
+logs*

@@ -77,8 +77,10 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                     strchr(strchr(strchr(fromAddr,'.')+1,'.')+1,'.')+1);
             
             //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
-            char logLine[100];
-            // sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+            if(D[heardFrom] < 0)
+                D[heardFrom] = D[heardFrom] * -1;
+                //TODO: Send cost and path vector
+            std::cout << "recvBuf: " << recvBuf << "\n";
             // sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
             // sprintf(logLine, "receive packet message %s\n", message); 
             // sprintf(logLine, "unreachable dest %d\n", dest); 
@@ -88,12 +90,20 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
         }
         
+        char logLine[100];
+        short int dest;
+        int nexthop = 0;
+        int cost;
+        std::string message;
         //Is it a packet from the manager? (see mp2 specification for more details)
         //send format: 'send'<4 ASCII bytes>, destID<net order 2 byte signed>, <some ASCII message>
         if(!strncmp(reinterpret_cast<const char*>(recvBuf), "send", 4))
         {
             //TODO send the requested message to the requested destination node
             // ...
+            sscanf(reinterpret_cast<const char*>(recvBuf), "%*4c%hd%100s", &dest, &message);
+            sprintf(logLine, "sending packet dest %hd nexthop %d message %s\n", dest, nexthop, message); 
+            std::cout << "Sending packet dest, nexthop, message: " << dest << " " << nexthop << " " << message << "\n";
         }
         //'cost'<4 ASCII bytes>, destID<net order 2 byte signed> newCost<net order 4 byte signed>
         if(!strncmp(reinterpret_cast<const char*>(recvBuf), "cost", 4))
@@ -101,6 +111,11 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             //TODO record the cost change (remember, the link might currently be down! in that case,
             //this is the new cost you should treat it as having once it comes back up.)
             // ...
+            sscanf(reinterpret_cast<const char*>(recvBuf), "%*4c%hd%d", &dest, &cost);
+            if(D[dest] < 0)
+                D[dest] = cost*-1;
+            else
+                D[dest] = cost;
         }
         
         //TODO now check for the various types of packets you use in your own protocol
