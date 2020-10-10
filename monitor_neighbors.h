@@ -58,6 +58,9 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
     unsigned char recvBuf[1000];
 
     int bytesRecvd;
+    short int neighbors[255];
+    for(int i=0; i<255; i+=1)
+        neighbors[255] = -1;
     while(1)
     {
         theirAddrLen = sizeof(theirAddr);
@@ -79,12 +82,31 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
             if(D[heardFrom] < 0)
                 D[heardFrom] = D[heardFrom] * -1;
-                //TODO: Send cost and path vector
-            std::cout << "recvBuf: " << recvBuf << "\n";
-            // sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
-            // sprintf(logLine, "receive packet message %s\n", message); 
-            // sprintf(logLine, "unreachable dest %d\n", dest); 
-            // fwrite(logLine, 1, strlen(logLine), theLogFile);
+            // Update neighbors list
+            for(int i=0; i<255; i++) {
+                if(neighbors[i] == heardFrom)
+                    break;
+                if(neighbors[i] == -1)
+                    neighbors[i] = heardFrom; 
+            }
+            std::string path_to_node = "";
+            path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
+            // Path is different. Send to all neighbors 
+            if(path_to_node.compare(P[heardFrom]) != 0){
+                P[heardFrom] = path_to_node;
+                for(int i=0; i<255; i++){
+                    int msgLen = 4+sizeof(short int)+strlen(argv[4]);
+                    char* sendBuf = malloc(msgLen);
+
+                    strcpy(sendBuf, "path");
+                    memcpy(sendBuf+4, &no_destID, sizeof(short int));
+                    strcpy(sendBuf+4+sizeof(short_int), "path");
+                    memcpy(sendBuf+4+sizeof(short int), argv[4], strlen(argv[4]));
+                    sendto(globalSocketUDP, send_message, strlen(send_message), 0,
+                        (struct sockaddr*)&globalNodeAddrs[next_dest], sizeof(globalNodeAddrs[next_dest]));
+                    free(sendBuf);
+                }
+            }
             
             //record that we heard from heardFrom just now.
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
@@ -92,26 +114,49 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         
         char logLine[100];
         short int dest;
-        int nexthop = 0;
+        char no_dest[2];
+        short int no_dest_int;
+        char new_cost[4];
+        int new_cost_int;
         int cost;
-        std::string message;
+        int nexthop = 0;
+        char message[100];
+        char send_message[106];
+        memset(message, 0, 100);
+        memset(send_message, 0, 106);
         //Is it a packet from the manager? (see mp2 specification for more details)
         //send format: 'send'<4 ASCII bytes>, destID<net order 2 byte signed>, <some ASCII message>
         if(!strncmp(reinterpret_cast<const char*>(recvBuf), "send", 4))
         {
             //TODO send the requested message to the requested destination node
             // ...
-            sscanf(reinterpret_cast<const char*>(recvBuf), "%*4c%hd%100s", &dest, &message);
+            int messageBytes = bytesRecvd - 4 - sizeof(short int);
+            memcpy(no_dest, recvBuf+4, sizeof(short int));
+            memcpy(message, recvBuf+4+sizeof(short int), messageBytes);
+            no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
+            dest = ntohs(no_dest_int);
             sprintf(logLine, "sending packet dest %hd nexthop %d message %s\n", dest, nexthop, message); 
-            std::cout << "Sending packet dest, nexthop, message: " << dest << " " << nexthop << " " << message << "\n";
+            std::cout << logLine << std::endl;
+            fwrite(logLine, 1, strlen(logLine), theLogFile);
+            int next_dest = dest; //TODO: find next dest
+            sprintf(send_message, "send%hd%s", next_dest, nexthop, message); 
+            sendto(globalSocketUDP, send_message, strlen(send_message), 0,
+                (struct sockaddr*)&globalNodeAddrs[next_dest], sizeof(globalNodeAddrs[next_dest]));
         }
         //'cost'<4 ASCII bytes>, destID<net order 2 byte signed> newCost<net order 4 byte signed>
         if(!strncmp(reinterpret_cast<const char*>(recvBuf), "cost", 4))
         {
             //TODO record the cost change (remember, the link might currently be down! in that case,
             //this is the new cost you should treat it as having once it comes back up.)
-            // ...
-            sscanf(reinterpret_cast<const char*>(recvBuf), "%*4c%hd%d", &dest, &cost);
+            int messageBytes = bytesRecvd - 4 - sizeof(short int);
+            memcpy(no_dest, recvBuf+4, sizeof(short int));
+            memcpy(new_cost, recvBuf+4+sizeof(short int), 4);
+            no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
+            new_cost_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8 + (uint8_t)no_dest[0] << 16 + (uint8_t)no_dest[1] << 24;
+            dest = ntohs(no_dest_int);
+            cost = ntohl(new_cost_int);
+            sprintf(logLine, "new cost from self to dest: %hd cost: %d \n", dest, cost); 
+            std::cout << logLine << std::endl;
             if(D[dest] < 0)
                 D[dest] = cost*-1;
             else

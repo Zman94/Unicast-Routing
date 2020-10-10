@@ -41,6 +41,7 @@ int main(int argc, char** argv)
     //initialization: get this process's node ID, record what time it is, 
     //and set up our sockaddr_in's for sending to the other nodes.
     globalMyID = atoi(argv[1]);
+    P[globalMyID] = argv[1];
     int i;
     for(i=0;i<256;i++)
     {
@@ -76,7 +77,6 @@ int main(int argc, char** argv)
         perror("socket");
         exit(1);
     }
-    std::cout << "socket bound\n";
     char myAddr[100];
     struct sockaddr_in bindAddr;
     sprintf(myAddr, "10.1.1.%d", globalMyID);	
@@ -84,8 +84,6 @@ int main(int argc, char** argv)
     bindAddr.sin_family = AF_INET;
     bindAddr.sin_port = htons(7777);
     inet_pton(AF_INET, myAddr, &bindAddr.sin_addr);
-    std::cout << "globalMyID " << globalMyID << "\n";
-    std::cout << "myAddr " << myAddr << "\n";
     if(bind(globalSocketUDP, (struct sockaddr*)&bindAddr, sizeof(struct sockaddr_in)) < 0)
     {
         perror("bind");
