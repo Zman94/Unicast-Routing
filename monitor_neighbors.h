@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <vector>
 
 extern int globalMyID;
 //last time you heard from each node. TODO: you will want to monitor this
@@ -24,6 +25,57 @@ extern int globalSocketUDP;
 extern struct sockaddr_in globalNodeAddrs[256];
 
 
+size_t split(const std::string &txt, std::vector<std::string> &strs, char ch)
+{
+    size_t pos = txt.find( ch );
+    size_t initialPos = 0;
+    strs.clear();
+
+    // Decompose statement
+    while( pos != std::string::npos ) {
+        strs.push_back( txt.substr( initialPos, pos - initialPos ) );
+        initialPos = pos + 1;
+
+        pos = txt.find( ch, initialPos );
+    }
+
+    // Add the last one
+    strs.push_back( txt.substr( initialPos, std::min( pos, txt.size() ) - initialPos + 1 ) );
+
+    return strs.size();
+}
+
+void broadcastNewPath(short int neighbors[], int cost_to_node, std::string path_to_node, short int heardFrom){
+    for(int i=0; i<255; i++){
+        if(neighbors[i] == -1)
+            break;
+        // path<dest>cost<cost>;<path>
+        int msgLen = 4+sizeof(short int)+4+sizeof(int)+1+path_to_node.length();
+        short int no_neighbor = htons(heardFrom);
+        std::string sendBuf = "path" + std::to_string(no_neighbor) + "cost" + std::to_string(cost_to_node)+";"+path_to_node;
+
+        sendto(globalSocketUDP, sendBuf.c_str(), sendBuf.length(), 0,
+            (struct sockaddr*)&globalNodeAddrs[neighbors[i]], sizeof(globalNodeAddrs[neighbors[i]]));
+    }
+    return;
+}
+
+void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], timeval globalLastHeartbeat[]){
+    extern struct timeval cur_time;
+    gettimeofday(&cur_time, 0);
+    for(int i=0; i<255; i++){
+        if(neighbors[i] == -1)
+            break;
+        // Unavailable after 3 seconds
+        if(cur_time.tv_sec - globalLastHeartbeat[neighbors[i]].tv_sec >= 3){
+            if(D[neighbors[i]] > 0){
+                D[neighbors[i]] = D[neighbors[i]]*-1;
+                broadcastNewPath(neighbors, D[neighbors[i]], P[neighbors[i]], neighbors[i]);
+            }
+        }
+    }
+    return;
+}
 //Yes, this is terrible. It's also terrible that, in Linux, a socket
 //can't receive broadcast packets unless it's bound to INADDR_ANY,
 //which we can't do in this assignment.
@@ -80,14 +132,17 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                     strchr(strchr(strchr(fromAddr,'.')+1,'.')+1,'.')+1);
             
             //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
-            if(D[heardFrom] < 0)
+            if(D[heardFrom] < 0){
                 D[heardFrom] = D[heardFrom] * -1;
+            }
             // Update neighbors list
             for(int i=0; i<255; i++) {
                 if(neighbors[i] == heardFrom)
                     break;
-                if(neighbors[i] == -1)
+                if(neighbors[i] == -1) {
                     neighbors[i] = heardFrom; 
+                    break
+                }
             }
             std::string path_to_node = "";
             path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
@@ -95,22 +150,14 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             // Path is different. Send to all neighbors 
             if(path_to_node.compare(P[heardFrom]) != 0){
                 P[heardFrom] = path_to_node;
-                for(int i=0; i<255; i++){
-                    if(neighbors[i] == -1)
-                        break;
-                    // path<dest>cost<cost>;<path>
-                    int msgLen = 4+sizeof(short int)+4+sizeof(int)+1+path_to_node.length();
-                    short int no_neighbor = htons(heardFrom);
-                    std::string sendBuf = "path" + std::to_string(no_neighbor) + "cost" + std::to_string(D[heardFrom])+";"+path_to_node;
-
-                    sendto(globalSocketUDP, sendBuf.c_str(), sendBuf.length(), 0,
-                        (struct sockaddr*)&globalNodeAddrs[neighbors[i]], sizeof(globalNodeAddrs[neighbors[i]]));
-                }
+                broadcastNewPath(neighbors, D[heardFrom], path_to_node, heardFrom);
             }
             
             //record that we heard from heardFrom just now.
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
         }
+
+        checkNeighborAvailability(neighbors, D, P, globalLastHeartbeat); //Check for unavailable nodes
         
         char logLine[100];
         short int dest;
@@ -123,6 +170,8 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         char message[100];
         char send_message[106];
         char path[1000];
+        std::vector<std::string> cur_split_path;
+        std::vector<std::string> new_split_path;
         memset(message, 0, 100);
         memset(send_message, 0, 106);
         //Is it a packet from the manager? (see mp2 specification for more details)
@@ -136,6 +185,19 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             memcpy(message, recvBuf+4+sizeof(short int), messageBytes);
             no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
             dest = ntohs(no_dest_int);
+            if(dest == globalMyID){
+                sprintf(logLine, "receive packet message %s\n", message); 
+            }
+            else if(D[dest] < 0){
+                sprintf(logLine, "unreachable dest %d\n", dest); 
+            }
+            else if(heardFrom > 0){                    
+                sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+            }
+            else{
+                sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+            }
+
             sprintf(logLine, "sending packet dest %hd nexthop %d message %s\n", dest, nexthop, message); 
             std::cout << logLine << std::endl;
             fwrite(logLine, 1, strlen(logLine), theLogFile);
@@ -147,6 +209,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         //'cost'<4 ASCII bytes>, destID<net order 2 byte signed> newCost<net order 4 byte signed>
         if(!strncmp(reinterpret_cast<const char*>(recvBuf), "cost", 4))
         {
+            // TODO: Busted right now
             //TODO record the cost change (remember, the link might currently be down! in that case,
             //this is the new cost you should treat it as having once it comes back up.)
             int messageBytes = bytesRecvd - 4 - sizeof(short int);
@@ -176,33 +239,27 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             new_cost_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8 + (uint8_t)no_dest[0] << 16 + (uint8_t)no_dest[1] << 24;
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
+            std::string path_str(path);
+            split(P[dest], cur_split_path, ' ');
+            split(path_str, new_split_path, ' ');
             if(cost <= D[dest]){
                 if(cost == D[dest]){
                     //TODO: tiebreak
-                    std::string cur_next_step;
-                    std::string new_next_step;
-                    std::string s;
-                    int i = 0;
-                    while (getline(P[dest], s, ' ')) {
-                        if(i == 1){
-                            cur_next_step = s;
-                            break;
-                        }
-                        i++;
+                    int cur_next_step = stoi(cur_split_path[1]);
+                    int new_next_step = stoi(new_split_path[0]);
+                    if(new_next_step < cur_next_step){
+                        P[dest] = path_str;
+                        broadcastNewPath(neighbors, D[dest], P[dest], dest);
                     }
-                    new_next_step = x;
                 }
                 else{
-                    std::string path_str(path);
                     path_str = std::to_string(globalMyID) + " " + path_str;
                     P[dest] = path_str;
                     D[dest] = cost;
+                    broadcastNewPath(neighbors, D[dest], P[dest], dest);
                 }
             }
         }
-        //TODO now check for the various types of packets you use in your own protocol
-        //else if(!strncmp(recvBuf, "your other message types", ))
-        // ... 
     }
     //(should never reach here)
     close(globalSocketUDP);
