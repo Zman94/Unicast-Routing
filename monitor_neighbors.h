@@ -91,20 +91,20 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             }
             std::string path_to_node = "";
             path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
+
             // Path is different. Send to all neighbors 
             if(path_to_node.compare(P[heardFrom]) != 0){
                 P[heardFrom] = path_to_node;
                 for(int i=0; i<255; i++){
-                    int msgLen = 4+sizeof(short int)+strlen(argv[4]);
-                    char* sendBuf = malloc(msgLen);
+                    if(neighbors[i] == -1)
+                        break;
+                    // path<dest>cost<cost>;<path>
+                    int msgLen = 4+sizeof(short int)+4+sizeof(int)+1+path_to_node.length();
+                    short int no_neighbor = htons(heardFrom);
+                    std::string sendBuf = "path" + std::to_string(no_neighbor) + "cost" + std::to_string(D[heardFrom])+";"+path_to_node;
 
-                    strcpy(sendBuf, "path");
-                    memcpy(sendBuf+4, &no_destID, sizeof(short int));
-                    strcpy(sendBuf+4+sizeof(short_int), "path");
-                    memcpy(sendBuf+4+sizeof(short int), argv[4], strlen(argv[4]));
-                    sendto(globalSocketUDP, send_message, strlen(send_message), 0,
-                        (struct sockaddr*)&globalNodeAddrs[next_dest], sizeof(globalNodeAddrs[next_dest]));
-                    free(sendBuf);
+                    sendto(globalSocketUDP, sendBuf.c_str(), sendBuf.length(), 0,
+                        (struct sockaddr*)&globalNodeAddrs[neighbors[i]], sizeof(globalNodeAddrs[neighbors[i]]));
                 }
             }
             
@@ -122,6 +122,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         int nexthop = 0;
         char message[100];
         char send_message[106];
+        char path[1000];
         memset(message, 0, 100);
         memset(send_message, 0, 106);
         //Is it a packet from the manager? (see mp2 specification for more details)
@@ -161,8 +162,44 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                 D[dest] = cost*-1;
             else
                 D[dest] = cost;
+            
+            // TODO: Alert all neighbors
         }
-        
+        //'path'<2 byte signed>cost<int>;<some ASCII message>
+        if(!strncmp(reinterpret_cast<const char*>(recvBuf), "path", 4))
+        {
+            int messageBytes = bytesRecvd - 4 - sizeof(short int) - 4 - sizeof(int) - 1;
+            memcpy(no_dest, recvBuf+4, sizeof(short int));
+            memcpy(new_cost, recvBuf+4+sizeof(short int)+4, sizeof(int));
+            memcpy(path, recvBuf+4+sizeof(short int)+4+sizeof(int)+1, messageBytes);
+            no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
+            new_cost_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8 + (uint8_t)no_dest[0] << 16 + (uint8_t)no_dest[1] << 24;
+            dest = ntohs(no_dest_int);
+            cost = ntohl(new_cost_int);
+            if(cost <= D[dest]){
+                if(cost == D[dest]){
+                    //TODO: tiebreak
+                    std::string cur_next_step;
+                    std::string new_next_step;
+                    std::string s;
+                    int i = 0;
+                    while (getline(P[dest], s, ' ')) {
+                        if(i == 1){
+                            cur_next_step = s;
+                            break;
+                        }
+                        i++;
+                    }
+                    new_next_step = x;
+                }
+                else{
+                    std::string path_str(path);
+                    path_str = std::to_string(globalMyID) + " " + path_str;
+                    P[dest] = path_str;
+                    D[dest] = cost;
+                }
+            }
+        }
         //TODO now check for the various types of packets you use in your own protocol
         //else if(!strncmp(recvBuf, "your other message types", ))
         // ... 
