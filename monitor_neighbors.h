@@ -293,14 +293,12 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                             if(new_next_step < cur_next_step){
                                 path_str = std::to_string(globalMyID) + " " + path_str;
                                 P[dest] = path_str;
-                                broadcastNewPath(neighbors, D[dest], P[dest], dest);
                             }
                         }
                         else{
                             path_str = std::to_string(globalMyID) + " " + path_str;
                             P[dest] = path_str;
                             D[dest] = cost;
-                            broadcastNewPath(neighbors, D[dest], P[dest], dest);
                         }
                     }
                 }
@@ -316,16 +314,18 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                     continue;
                 for(int i=0; i<cur_split_path.size(); i++){
                     if(stoi(cur_split_path[i]) == heardFrom){ // no valid path
-                        D[dest] = cost-D[heardFrom];
-                        broadcastNewPath(neighbors, D[dest], P[dest], dest);
-                        found_path = true;
+                        if(D[dest]*-1 > cost-D[heardFrom]){ // current path would be better
+                            D[dest] = D[dest]*-1;
+                        }
+                        else{
+                            D[dest] = cost-D[heardFrom];
+                            P[dest] = std::to_string(globalMyID) + " " + path_str;
+                        }
                         break;
                     }
                 }
-                if(!found_path){
-                    broadcastNewPath(neighbors, D[dest], P[dest], dest);
-                }
             }
+            broadcastNewPath(neighbors, D[dest], P[dest], dest);
         }
     }
     //(should never reach here)
