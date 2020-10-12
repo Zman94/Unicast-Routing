@@ -50,11 +50,19 @@ void broadcastNewPath(short int neighbors[], int cost_to_node, std::string path_
         if(neighbors[i] == -1)
             break;
         // path<dest>cost<cost>;<path>
+        char send_message[1000];
         int msgLen = 4+sizeof(short int)+4+sizeof(int)+1+path_to_node.length();
         short int no_neighbor = htons(heardFrom);
-        std::string sendBuf = "path" + std::to_string(no_neighbor) + "cost" + std::to_string(cost_to_node)+";"+path_to_node;
+        int no_cost = htonl(cost_to_node);
+        // std::string sendBuf = "path" + std::to_string(no_neighbor) + "cost" + std::to_string(cost_to_node)+";"+path_to_node;
+        strcpy(send_message, "path");
+        memcpy(send_message+4, &no_neighbor, sizeof(short int));
+        strcpy(send_message+4+sizeof(short int), "cost");
+        memcpy(send_message+4+sizeof(short int)+4, &no_cost, sizeof(int));
+        strcpy(send_message+4+sizeof(short int)+4+sizeof(int), ";");
+        memcpy(send_message+4+sizeof(short int)+4+sizeof(int)+1, path_to_node.c_str(), path_to_node.length());
 
-        sendto(globalSocketUDP, sendBuf.c_str(), sendBuf.length(), 0,
+        sendto(globalSocketUDP, send_message, msgLen, 0,
             (struct sockaddr*)&globalNodeAddrs[neighbors[i]], sizeof(globalNodeAddrs[neighbors[i]]));
     }
     return;
@@ -71,6 +79,14 @@ void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], 
             if(D[neighbors[i]] > 0){
                 D[neighbors[i]] = D[neighbors[i]]*-1;
                 broadcastNewPath(neighbors, D[neighbors[i]], P[neighbors[i]], neighbors[i]);
+                int j = i+1;
+                for(;j<255; j++){ // Find next -1
+                    if(neighbors[j] == -1)
+                        break;
+                }
+                neighbors[i] = neighbors[j-1]; // Remove value at i (no longer neighbor)
+                neighbors[j-1] = -1;
+                i--;
             }
         }
     }
@@ -112,7 +128,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
     int bytesRecvd;
     short int neighbors[255];
     for(int i=0; i<255; i+=1)
-        neighbors[255] = -1;
+        neighbors[i] = -1;
     while(1)
     {
         theirAddrLen = sizeof(theirAddr);
@@ -131,11 +147,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             heardFrom = atoi(
                     strchr(strchr(strchr(fromAddr,'.')+1,'.')+1,'.')+1);
             
-            //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
-            if(D[heardFrom] < 0){
-                D[heardFrom] = D[heardFrom] * -1;
-                broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
-            }
             // Update neighbors list
             for(int i=0; i<255; i++) {
                 if(neighbors[i] == heardFrom)
@@ -144,6 +155,12 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                     neighbors[i] = heardFrom; 
                     break;
                 }
+            }
+
+            //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
+            if(D[heardFrom] < 0){
+                D[heardFrom] = D[heardFrom] * -1;
+                broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
             }
             std::string path_to_node = "";
             path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
@@ -186,26 +203,42 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             memcpy(message, recvBuf+4+sizeof(short int), messageBytes);
             no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
             dest = ntohs(no_dest_int);
+            int next_dest;
+            split(P[dest], cur_split_path, ' ');
+            if(cur_split_path.size() == 1){
+                next_dest = globalMyID;
+            }
+            else{
+                next_dest = stoi(cur_split_path[1]);
+            }
             if(dest == globalMyID){
                 sprintf(logLine, "receive packet message %s\n", message); 
+                std::cout << logLine;
+                fwrite(logLine, 1, strlen(logLine), theLogFile);
+                fflush(theLogFile);
+                continue; // don't send packet if at dest
             }
             else if(D[dest] < 0){
                 sprintf(logLine, "unreachable dest %d\n", dest); 
             }
             else if(heardFrom > 0){                    
-                sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+                sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, next_dest, message); 
             }
             else{
-                sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, nexthop, message); 
+                sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, next_dest, message); 
             }
 
-            sprintf(logLine, "sending packet dest %hd nexthop %d message %s\n", dest, nexthop, message); 
-            std::cout << logLine << std::endl;
+            std::cout << logLine;
             fwrite(logLine, 1, strlen(logLine), theLogFile);
-            split(P[dest], cur_split_path, ' ');
-            int next_dest = stoi(cur_split_path[1]);
-            sprintf(send_message, "send%hd%s", next_dest, message); 
-            sendto(globalSocketUDP, send_message, strlen(send_message), 0,
+            fflush(theLogFile);
+
+            short int no_destID = htons(dest);
+            strcpy(send_message, "send");
+            memcpy(send_message+4, &no_destID, sizeof(short int));
+            memcpy(send_message+4+sizeof(short int), message, messageBytes);
+            int msgLen = 4+sizeof(short int)+messageBytes;
+
+            sendto(globalSocketUDP, send_message, msgLen, 0,
                 (struct sockaddr*)&globalNodeAddrs[next_dest], sizeof(globalNodeAddrs[next_dest]));
         }
         //'cost'<4 ASCII bytes>, destID<net order 2 byte signed> newCost<net order 4 byte signed>
@@ -237,14 +270,14 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             memcpy(no_dest, recvBuf+4, sizeof(short int));
             memcpy(new_cost, recvBuf+4+sizeof(short int)+4, sizeof(int));
             memcpy(path, recvBuf+4+sizeof(short int)+4+sizeof(int)+1, messageBytes);
-            no_dest_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8;
-            new_cost_int = (uint8_t)no_dest[0] + (uint8_t)no_dest[1] << 8 + (uint8_t)no_dest[0] << 16 + (uint8_t)no_dest[1] << 24;
+            no_dest_int = (uint8_t)no_dest[0] + ((uint8_t)no_dest[1] << 8);
+            new_cost_int = (uint8_t)new_cost[0] + ((uint8_t)new_cost[1] << 8) + ((uint8_t)new_cost[2] << 16) + ((uint8_t)new_cost[3] << 24);
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
             std::string path_str(path);
             split(P[dest], cur_split_path, ' ');
             split(path_str, new_split_path, ' ');
-            if(cost > 0){ // new path is valid
+            if(cost >= 0){ // new path is valid
                 if(D[dest] < 0){ // Currently have no path
                     D[dest] = cost + D[heardFrom]; // new path
                     path_str = std::to_string(globalMyID) + " " + path_str;
@@ -276,7 +309,11 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                 // check if our path has heardFrom in it
                 // if yes, send new cost - D[heardFrom] to neighbors
                 // else send our path to neighbors
+                if(D[dest] < 0) // no valid path
+                    continue;
                 bool found_path = false;
+                if(cur_split_path.size() < 1)
+                    continue;
                 for(int i=0; i<cur_split_path.size(); i++){
                     if(stoi(cur_split_path[i]) == heardFrom){ // no valid path
                         D[dest] = cost-D[heardFrom];
