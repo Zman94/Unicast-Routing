@@ -60,3 +60,8 @@ ls_router
 logs*
 manager
 .vscode*
+
+MP2_gradingscript
+MP2_gradingscript/*
+MP2_gradingscript/autograde.py
+MP2_gradingscript/manager/manager_send
