@@ -34,6 +34,8 @@ int main(int argc, char** argv)
         P[i] = "";
         initialCosts[i] = 1;
     }
+
+
     if(argc != 4)
     {
         fprintf(stderr, "Usage: %s mynodeid initialcostsfile logfile\n\n", argv[0]);
@@ -69,6 +71,8 @@ int main(int argc, char** argv)
     int node;
     int cost;
     while(fgets(line_info, 100, init_costs)){
+        if(line_info[0]=='e') // check for empty start
+            break;
         sscanf(line_info, "%d %d", &node, &cost);
         D[node] = cost;
         initialCosts[node] = cost;
@@ -96,7 +100,7 @@ int main(int argc, char** argv)
         close(globalSocketUDP);
         exit(1);
     }
-    
+
     
     //start threads... feel free to add your own, and to remove the provided ones.
     pthread_t announcerThread;

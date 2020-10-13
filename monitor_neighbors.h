@@ -167,25 +167,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             heardFrom = atoi(
                     strchr(strchr(strchr(fromAddr,'.')+1,'.')+1,'.')+1);
             
-            // Update neighbors list
-            for(int i=0; i<255; i++) {
-                if(neighbors[i] == heardFrom)
-                    break;
-                if(neighbors[i] == -1) {
-                    // Have to broadcast our paths to the neighbor
-                    neighbors[i] = heardFrom; 
-                    for(int j=0; j<255; j++){
-                        std::vector<std::string> cur_split_path;
-                        split(P[j], cur_split_path, ' ');
-                        if(cur_split_path.size() == 0)
-                            continue;
-                        if(D[j] < 0 || P[j].length() == 0)
-                            continue;
-                        broadcastNewPath(neighbors, D[j], P[j], j);
-                    }
-                    break;
-                }
-            }
             std::string path_to_node = "";
             if(P[heardFrom].length() == 0){
                 path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
@@ -214,6 +195,25 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                     P[heardFrom] = path_to_node;
                     D[heardFrom] = initialCosts[heardFrom];
                     broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
+                }
+            }
+            // Update neighbors list
+            for(int i=0; i<255; i++) {
+                if(neighbors[i] == heardFrom)
+                    break;
+                if(neighbors[i] == -1) {
+                    // Have to broadcast our paths to the neighbor
+                    neighbors[i] = heardFrom; 
+                    for(int j=0; j<255; j++){
+                        std::vector<std::string> cur_split_path;
+                        split(P[j], cur_split_path, ' ');
+                        if(cur_split_path.size() == 0) // should be unnecessary
+                            continue;
+                        if(D[j] < 0 || P[j].length() == 0)
+                            continue;
+                        broadcastNewPath(neighbors, D[j], P[j], j);
+                    }
+                    break;
                 }
             }
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
@@ -317,15 +317,15 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
             std::string path_str(path, messageBytes);
-            if(path_str.length() == 0 ){
-                std::cout << "BAD_PATH_STR" << std::endl;
-                std::cout << "path_str " << path_str << std::endl;;
-                std::cout << "heardFrom " << heardFrom << std::endl;;
-                std::cout << "dest " << dest << std::endl;;
-                std::cout << "cost " << cost << std::endl;;
-                std::cout << "myGlobalID " << globalMyID << std::endl;
-                std::cout << "cur path " << P[dest] << std::endl;
-            }
+            // if(dest == 0 ){
+            //     std::cout << std::endl;
+            //     std::cout << "path_str " << path_str << std::endl;;
+            //     std::cout << "myGlobalID " << globalMyID << std::endl;
+            //     std::cout << "heardFrom " << heardFrom << std::endl;;
+            //     std::cout << "dest " << dest << std::endl;;
+            //     std::cout << "cost " << cost << std::endl;;
+            //     std::cout << "cur path " << P[dest] << std::endl;
+            // }
             split(P[dest], cur_split_path, ' ');
             split(path_str, new_split_path, ' ');
             if(cost >= 0){ // new path is valid
