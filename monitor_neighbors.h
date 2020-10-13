@@ -68,26 +68,42 @@ void broadcastNewPath(short int neighbors[], int cost_to_node, std::string path_
     return;
 }
 
-void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], timeval globalLastHeartbeat[]){
+void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], timeval globalLastHeartbeat[], FILE* theLogFile){
     struct timeval cur_time;
     gettimeofday(&cur_time, 0);
     for(int i=0; i<255; i++){
         if(neighbors[i] == -1)
             break;
         // Unavailable after 3 seconds
-        if(cur_time.tv_sec - globalLastHeartbeat[neighbors[i]].tv_sec >= 3){
-            if(D[neighbors[i]] > 0){
-                D[neighbors[i]] = D[neighbors[i]]*-1;
-                broadcastNewPath(neighbors, D[neighbors[i]], P[neighbors[i]], neighbors[i]);
-                int j = i+1;
-                for(;j<255; j++){ // Find next -1
-                    if(neighbors[j] == -1)
-                        break;
+        // TODO: revert back to 3 seconds
+        if(cur_time.tv_sec - globalLastHeartbeat[neighbors[i]].tv_sec >= 30){
+            // TODO: check every path to see if it uses our lost neighbor. Alert about all paths
+            // Use neighbors list
+            for(int j=0; j<255; j++){
+                if(neighbors[j] == -1)
+                    break;
+                std::vector<std::string> cur_split_path;
+                split(P[neighbors[j]], cur_split_path, ' ');
+                for(int k=0; k<cur_split_path.size(); k++){
+                    if(stoi(cur_split_path[k]) == neighbors[i]){ //path goes through bad node
+                        if(D[neighbors[j]] >= 0){
+                            D[neighbors[j]] = D[neighbors[j]]*-1;
+                            char logLine[100];
+                            broadcastNewPath(neighbors, D[neighbors[j]], P[neighbors[j]], neighbors[j]);
+                            break;
+                        }
+                    }
                 }
-                neighbors[i] = neighbors[j-1]; // Remove value at i (no longer neighbor)
-                neighbors[j-1] = -1;
-                i--;
             }
+            // remove the neighbor
+            int j = i+1;
+            for(;j<255; j++){ // Find next -1
+                if(neighbors[j] == -1)
+                    break;
+            }
+            neighbors[i] = neighbors[j-1]; // Remove value at i (no longer neighbor)
+            neighbors[j-1] = -1;
+            i--;
         }
     }
     return;
@@ -116,7 +132,7 @@ void* announceToNeighbors(void* unusedParam)
     }
 }
 
-void listenForNeighbors(char* logFile, int D[], std::string P[])
+void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCosts[])
 {
     FILE* theLogFile;
     theLogFile = fopen(logFile, "wb");
@@ -142,6 +158,9 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         inet_ntop(AF_INET, &theirAddr.sin_addr, fromAddr, 100);
         
         short int heardFrom = -1;
+        char logLine[100];
+        std::vector<std::string> cur_split_path;
+        std::vector<std::string> new_split_path;
         if(strstr(fromAddr, "10.1.1."))
         {
             heardFrom = atoi(
@@ -152,32 +171,56 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                 if(neighbors[i] == heardFrom)
                     break;
                 if(neighbors[i] == -1) {
+                    // Have to broadcast our paths to the neighbor
                     neighbors[i] = heardFrom; 
+                    for(int j=0; j<255; j++){
+                        if(neighbors[j] == heardFrom)
+                            break;
+                        broadcastNewPath(neighbors, D[neighbors[j]], P[neighbors[j]], neighbors[j]);
+                    }
                     break;
                 }
             }
 
-            //TODO: this node can consider heardFrom to be directly connected to it; do any such logic now.
-            if(D[heardFrom] < 0){
-                D[heardFrom] = D[heardFrom] * -1;
+            std::string path_to_node = "";
+            if(P[heardFrom].length() == 0){
+                path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
+                P[heardFrom] = path_to_node;
+                if(D[heardFrom] < 0){
+                    std::cout << "D[heardFrom] " << D[heardFrom] << std::endl;
+                    D[heardFrom] = initialCosts[heardFrom];
+                }
                 broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
             }
-            std::string path_to_node = "";
-            path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
-
-            // Path is different. Send to all neighbors 
-            if(path_to_node.compare(P[heardFrom]) != 0){
+            else if(D[heardFrom] < 0){
+                D[heardFrom] = initialCosts[heardFrom];
+                path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
                 P[heardFrom] = path_to_node;
-                broadcastNewPath(neighbors, D[heardFrom], path_to_node, heardFrom);
+                broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
             }
-            
-            //record that we heard from heardFrom just now.
+            else if(D[heardFrom] >= initialCosts[heardFrom]){
+                if(D[heardFrom] == initialCosts[heardFrom]){
+                    split(P[heardFrom], cur_split_path, ' ');
+                    int cur_next_step = stoi(cur_split_path[1]);
+                    if(heardFrom < cur_next_step){ // if path directly to node is better
+                        path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
+                        P[heardFrom] = path_to_node;
+                        broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
+                    }
+                }
+                else{ // direct connect is better
+                    std::cout << "direct connect better heardFrom " << heardFrom << " P[heardFrom] " << P[heardFrom] << " D[heardFrom] " << D[heardFrom] << " initialCosts[heardFrom] " << initialCosts[heardFrom] << std::endl;
+                    path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
+                    P[heardFrom] = path_to_node;
+                    D[heardFrom] = initialCosts[heardFrom];
+                    broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
+                }
+            }
             gettimeofday(&globalLastHeartbeat[heardFrom], 0);
         }
 
-        checkNeighborAvailability(neighbors, D, P, globalLastHeartbeat); //Check for unavailable nodes
+        checkNeighborAvailability(neighbors, D, P, globalLastHeartbeat, theLogFile); //Check for unavailable nodes
         
-        char logLine[100];
         short int dest;
         char no_dest[2];
         short int no_dest_int;
@@ -188,8 +231,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
         char message[100];
         char send_message[106];
         char path[1000];
-        std::vector<std::string> cur_split_path;
-        std::vector<std::string> new_split_path;
         memset(message, 0, 100);
         memset(send_message, 0, 106);
         //Is it a packet from the manager? (see mp2 specification for more details)
@@ -274,17 +315,17 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
             new_cost_int = (uint8_t)new_cost[0] + ((uint8_t)new_cost[1] << 8) + ((uint8_t)new_cost[2] << 16) + ((uint8_t)new_cost[3] << 24);
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
-            std::string path_str(path);
+            std::string path_str(path, messageBytes);
             split(P[dest], cur_split_path, ' ');
             split(path_str, new_split_path, ' ');
             if(cost >= 0){ // new path is valid
                 if(D[dest] < 0){ // Currently have no path
-                    D[dest] = cost + D[heardFrom]; // new path
+                    D[dest] = cost + initialCosts[heardFrom]; // new path
                     path_str = std::to_string(globalMyID) + " " + path_str;
                     P[dest] = path_str;
                 }
                 else{ // Both paths are valid
-                    cost = cost + D[heardFrom];
+                    cost = cost + initialCosts[heardFrom];
                     if(cost <= D[dest]){
                         if(cost == D[dest]){ // tiebreak
                             //TODO: tiebreak
@@ -294,6 +335,9 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                                 path_str = std::to_string(globalMyID) + " " + path_str;
                                 P[dest] = path_str;
                             }
+                            else{ // our path is better
+                                continue;
+                            }
                         }
                         else{
                             path_str = std::to_string(globalMyID) + " " + path_str;
@@ -301,24 +345,27 @@ void listenForNeighbors(char* logFile, int D[], std::string P[])
                             D[dest] = cost;
                         }
                     }
+                    else{ // D[dest] < cost
+                        continue;
+                    }
                 }
             }
             else{ // new path is invalid
                 // check if our path has heardFrom in it
                 // if yes, send new cost - D[heardFrom] to neighbors
                 // else send our path to neighbors
-                if(D[dest] < 0) // no valid path
+                if(D[dest] < 0) // no valid path // shouldn't get here
                     continue;
                 bool found_path = false;
                 if(cur_split_path.size() < 1)
                     continue;
                 for(int i=0; i<cur_split_path.size(); i++){
                     if(stoi(cur_split_path[i]) == heardFrom){ // no valid path
-                        if(D[dest]*-1 > cost-D[heardFrom]){ // current path would be better
+                        if(D[dest]*-1 > cost-initialCosts[heardFrom]){ // current path would be better
                             D[dest] = D[dest]*-1;
                         }
                         else{
-                            D[dest] = cost-D[heardFrom];
+                            D[dest] = cost-initialCosts[heardFrom];
                             P[dest] = std::to_string(globalMyID) + " " + path_str;
                         }
                         break;

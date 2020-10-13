@@ -23,6 +23,8 @@ struct sockaddr_in globalNodeAddrs[256];
  
 int main(int argc, char** argv)
 {
+    //Initial Costs vector
+    int initialCosts[256];
     //Distance vector
     int D[256];
     //Path vector
@@ -30,6 +32,7 @@ int main(int argc, char** argv)
     for(int i=0; i<256; i++){
         D[i] = -1;
         P[i] = "";
+        initialCosts[i] = 1;
     }
     if(argc != 4)
     {
@@ -68,8 +71,11 @@ int main(int argc, char** argv)
     while(fgets(line_info, 100, init_costs)){
         sscanf(line_info, "%d %d", &node, &cost);
         D[node] = cost;
+        initialCosts[node] = cost;
     }
     D[globalMyID] = 0;
+    initialCosts[globalMyID] = 0;
+
     
     //socket() and bind() our socket. We will do all sendto()ing and recvfrom()ing on this one.
     if((globalSocketUDP=socket(AF_INET, SOCK_DGRAM, 0)) < 0)
@@ -97,11 +103,7 @@ int main(int argc, char** argv)
     pthread_create(&announcerThread, 0, announceToNeighbors, (void*)0);
     
     
-    
-    
     //good luck, have fun!
-    listenForNeighbors(argv[3], D, P);
-    
-    
+    listenForNeighbors(argv[3], D, P, initialCosts);
     
 }
