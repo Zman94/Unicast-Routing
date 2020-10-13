@@ -85,6 +85,7 @@ void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], 
                 std::vector<std::string> cur_split_path;
                 split(P[neighbors[j]], cur_split_path, ' ');
                 for(int k=0; k<cur_split_path.size(); k++){
+                    // std::cout << "stoi 88 " << cur_split_path[k] << std::endl;
                     if(stoi(cur_split_path[k]) == neighbors[i]){ //path goes through bad node
                         if(D[neighbors[j]] >= 0){
                             D[neighbors[j]] = D[neighbors[j]]*-1;
@@ -187,7 +188,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                 path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
                 P[heardFrom] = path_to_node;
                 if(D[heardFrom] < 0){
-                    std::cout << "D[heardFrom] " << D[heardFrom] << std::endl;
                     D[heardFrom] = initialCosts[heardFrom];
                 }
                 broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
@@ -201,6 +201,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             else if(D[heardFrom] >= initialCosts[heardFrom]){
                 if(D[heardFrom] == initialCosts[heardFrom]){
                     split(P[heardFrom], cur_split_path, ' ');
+                    // std::cout << "stoi 204" << cur_split_path[1] << std::endl;
                     int cur_next_step = stoi(cur_split_path[1]);
                     if(heardFrom < cur_next_step){ // if path directly to node is better
                         path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
@@ -209,7 +210,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                     }
                 }
                 else{ // direct connect is better
-                    std::cout << "direct connect better heardFrom " << heardFrom << " P[heardFrom] " << P[heardFrom] << " D[heardFrom] " << D[heardFrom] << " initialCosts[heardFrom] " << initialCosts[heardFrom] << std::endl;
                     path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
                     P[heardFrom] = path_to_node;
                     D[heardFrom] = initialCosts[heardFrom];
@@ -250,11 +250,12 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                 next_dest = globalMyID;
             }
             else{
+                // std::cout << "stoi 253 " << cur_split_path[1] << std::endl;
                 next_dest = stoi(cur_split_path[1]);
             }
             if(dest == globalMyID){
                 sprintf(logLine, "receive packet message %s\n", message); 
-                std::cout << logLine;
+                // std::cout << logLine;
                 fwrite(logLine, 1, strlen(logLine), theLogFile);
                 fflush(theLogFile);
                 continue; // don't send packet if at dest
@@ -269,7 +270,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                 sprintf(logLine, "sending packet dest %d nexthop %d message %s\n", dest, next_dest, message); 
             }
 
-            std::cout << logLine;
+            // std::cout << logLine;
             fwrite(logLine, 1, strlen(logLine), theLogFile);
             fflush(theLogFile);
 
@@ -296,7 +297,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
             sprintf(logLine, "new cost from self to dest: %hd cost: %d \n", dest, cost); 
-            std::cout << logLine << std::endl;
+            // std::cout << logLine << std::endl;
             if(D[dest] < 0)
                 D[dest] = cost*-1;
             else
@@ -329,7 +330,9 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                     if(cost <= D[dest]){
                         if(cost == D[dest]){ // tiebreak
                             //TODO: tiebreak
+                            std::cout << "stoi 333 " << cur_split_path[1] << std::endl;
                             int cur_next_step = stoi(cur_split_path[1]);
+                            std::cout << "stoi 335 " << new_split_path[0] << std::endl;
                             int new_next_step = stoi(new_split_path[0]);
                             if(new_next_step < cur_next_step){
                                 path_str = std::to_string(globalMyID) + " " + path_str;
@@ -360,6 +363,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                 if(cur_split_path.size() < 1)
                     continue;
                 for(int i=0; i<cur_split_path.size(); i++){
+                    std::cout << "stoi 363 " << cur_split_path[i] << std::endl;
                     if(stoi(cur_split_path[i]) == heardFrom){ // no valid path
                         if(D[dest]*-1 > cost-initialCosts[heardFrom]){ // current path would be better
                             D[dest] = D[dest]*-1;
