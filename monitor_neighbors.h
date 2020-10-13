@@ -76,7 +76,7 @@ void checkNeighborAvailability(short int neighbors[], int D[], std::string P[], 
             break;
         // Unavailable after 3 seconds
         // TODO: revert back to 3 seconds
-        if(cur_time.tv_sec - globalLastHeartbeat[neighbors[i]].tv_sec >= 30){
+        if(cur_time.tv_sec - globalLastHeartbeat[neighbors[i]].tv_sec >= 3){
             // TODO: check every path to see if it uses our lost neighbor. Alert about all paths
             // Use neighbors list
             for(int j=0; j<255; j++){
@@ -175,21 +175,22 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                     // Have to broadcast our paths to the neighbor
                     neighbors[i] = heardFrom; 
                     for(int j=0; j<255; j++){
-                        if(neighbors[j] == heardFrom)
-                            break;
-                        broadcastNewPath(neighbors, D[neighbors[j]], P[neighbors[j]], neighbors[j]);
+                        std::vector<std::string> cur_split_path;
+                        split(P[j], cur_split_path, ' ');
+                        if(cur_split_path.size() == 0)
+                            continue;
+                        if(D[j] < 0 || P[j].length() == 0)
+                            continue;
+                        broadcastNewPath(neighbors, D[j], P[j], j);
                     }
                     break;
                 }
             }
-
             std::string path_to_node = "";
             if(P[heardFrom].length() == 0){
                 path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
                 P[heardFrom] = path_to_node;
-                if(D[heardFrom] < 0){
-                    D[heardFrom] = initialCosts[heardFrom];
-                }
+                D[heardFrom] = initialCosts[heardFrom];
                 broadcastNewPath(neighbors, D[heardFrom], P[heardFrom], heardFrom);
             }
             else if(D[heardFrom] < 0){
@@ -201,7 +202,6 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             else if(D[heardFrom] >= initialCosts[heardFrom]){
                 if(D[heardFrom] == initialCosts[heardFrom]){
                     split(P[heardFrom], cur_split_path, ' ');
-                    // std::cout << "stoi 204" << cur_split_path[1] << std::endl;
                     int cur_next_step = stoi(cur_split_path[1]);
                     if(heardFrom < cur_next_step){ // if path directly to node is better
                         path_to_node = std::to_string(globalMyID) + " " + std::to_string(heardFrom);
@@ -317,6 +317,15 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             dest = ntohs(no_dest_int);
             cost = ntohl(new_cost_int);
             std::string path_str(path, messageBytes);
+            if(path_str.length() == 0 ){
+                std::cout << "BAD_PATH_STR" << std::endl;
+                std::cout << "path_str " << path_str << std::endl;;
+                std::cout << "heardFrom " << heardFrom << std::endl;;
+                std::cout << "dest " << dest << std::endl;;
+                std::cout << "cost " << cost << std::endl;;
+                std::cout << "myGlobalID " << globalMyID << std::endl;
+                std::cout << "cur path " << P[dest] << std::endl;
+            }
             split(P[dest], cur_split_path, ' ');
             split(path_str, new_split_path, ' ');
             if(cost >= 0){ // new path is valid
@@ -330,9 +339,23 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                     if(cost <= D[dest]){
                         if(cost == D[dest]){ // tiebreak
                             //TODO: tiebreak
-                            std::cout << "stoi 333 " << cur_split_path[1] << std::endl;
+                            // if( cur_split_path[1].length() == 0){
+                            //     std::cout << "path_str " << path_str << std::endl;;
+                            //     std::cout << "heardFrom " << heardFrom << std::endl;;
+                            //     std::cout << "dest " << dest << std::endl;;
+                            //     std::cout << "myGlobalID " << globalMyID << std::endl;
+                            //     std::cout << "cur path length " << cur_split_path.size() << std::endl;
+                            //     for(int z = 0; z < cur_split_path.size(); z++){
+                            //         std::cout << cur_split_path[z] << std::endl;
+                            //     }
+                            //     std::cout << "cur path " << P[dest] << std::endl;
+                            //     std::cout << "cost " << cost << std::endl;
+                            //     std::cout << "cur cost " << D[dest] << std::endl;
+                            //     std::cout << "initialCosts " << initialCosts[heardFrom] << std::endl;
+                            // }
+                            // std::cout << "stoi 333 " << cur_split_path[1] << std::endl;
                             int cur_next_step = stoi(cur_split_path[1]);
-                            std::cout << "stoi 335 " << new_split_path[0] << std::endl;
+                            // std::cout << "stoi 335 " << new_split_path[0] << std::endl;
                             int new_next_step = stoi(new_split_path[0]);
                             if(new_next_step < cur_next_step){
                                 path_str = std::to_string(globalMyID) + " " + path_str;
@@ -360,10 +383,18 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
                 if(D[dest] < 0) // no valid path // shouldn't get here
                     continue;
                 bool found_path = false;
-                if(cur_split_path.size() < 1)
+                if(cur_split_path.size() == 0)
                     continue;
                 for(int i=0; i<cur_split_path.size(); i++){
-                    std::cout << "stoi 363 " << cur_split_path[i] << std::endl;
+
+                    //DEBUGGING
+                    // if(cur_split_path[i].length() == 0){
+                    //     std::cout << "heardFrom " << heardFrom << std::endl;;
+                    //     std::cout << "myGlobalID " << globalMyID << std::endl;
+                    //     std::cout << "cur path length " << cur_split_path.size() << std::endl;
+                    //     std::cout << "cur path " << P[dest] << std::endl;
+                    //     std::cout << "stoi 363 " << cur_split_path[i].length() << std::endl;
+                    // }
                     if(stoi(cur_split_path[i]) == heardFrom){ // no valid path
                         if(D[dest]*-1 > cost-initialCosts[heardFrom]){ // current path would be better
                             D[dest] = D[dest]*-1;
