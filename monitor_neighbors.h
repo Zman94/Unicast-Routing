@@ -263,7 +263,7 @@ void listenForNeighbors(char* logFile, int D[], std::string P[], int initialCost
             else if(D[dest] < 0){
                 sprintf(logLine, "unreachable dest %d\n", dest); 
             }
-            else if(heardFrom > 0){                    
+            else if(heardFrom >= 0){                    
                 sprintf(logLine, "forward packet dest %d nexthop %d message %s\n", dest, next_dest, message); 
             }
             else{
